@@ -16,7 +16,7 @@ public:
     // pointers to bin list
     MallocMetaData* next;
     MallocMetaData* prev;
-    
+
     //TODO: pointers to prev, and next in heap sequence
 
 
@@ -67,6 +67,8 @@ static MallocMetaData* removeFromHistogram(MallocMetaData* to_remove) {
 
 static MallocMetaData* insertToHistogram(MallocMetaData* to_insert) {
     int bin_index = to_insert->size / KB;
+    to_insert->next = nullptr;
+    to_insert->prev = nullptr;
 
     if (bins[bin_index].head == nullptr) {
         bins[bin_index].head = to_insert;
