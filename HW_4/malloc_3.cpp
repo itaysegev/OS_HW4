@@ -5,6 +5,7 @@
 #define MAX 132095
 #define MIN 0
 #define KB  1024
+#define MAX_BIN 128
 
 
 // Classes
@@ -36,21 +37,90 @@ static size_t num_allocated_bytes = 0;
 
 
 // Functions
+
+static MallocMetaData* removeFromHistogram(MallocMetaData* to_remove) {
+    int bin_index = to_remove->size / KB;
+
+    if (to_remove == bins[bin_index].head) {
+        bins[bin_index].head = to_remove->next;
+        to_remove->next = nullptr;
+        if (bins[bin_index].head != nullptr) {
+            bins[bin_index].head->prev = nullptr;
+        }
+        return to_remove;
+    }
+
+    // in case is not head of bin
+    to_remove->next->prev = to_remove->prev;
+    if(to_remove->prev != nullptr) {
+        to_remove->prev->next = to_remove->next;
+    }
+    to_remove->next = nullptr;
+    to_remove->prev = nullptr;
+    return to_remove;
+}
+
+static MallocMetaData* insertToHistogram(MallocMetaData* to_insert) {
+    int bin_index = to_insert->size / KB;
+
+    if (bins[bin_index].head == nullptr) {
+        bins[bin_index].head = to_insert;
+        return to_insert;
+    }
+    else {
+        //iterator
+        MallocMetaData *temp = bins[bin_index].head;
+        MallocMetaData *pre_temp = nullptr;
+
+        // edge case 1: if new MetaData is new head
+        if (bins[bin_index].head->size >= to_insert->size) {
+            to_insert->next = bins[bin_index].head;
+            bins[bin_index].head->prev = to_insert;
+            bins[bin_index].head = to_insert;
+            return to_insert;
+        }
+        // finding a place between lesser and greater values of size
+        while (temp != nullptr) {
+            pre_temp = temp;
+            if (temp->size <= to_insert->size && temp->next != NULL && temp->next->size >= to_insert->size) {
+                to_insert->next = temp->next;
+                temp->next = to_insert;
+                to_insert->prev = temp;
+                to_insert->next->prev = to_insert;
+                return to_insert;
+            }
+            temp = temp->next;
+        }
+
+        // edge case 2: if new MetaData is new tail
+        to_insert->next = pre_temp->next;
+        pre_temp->next = to_insert;
+        to_insert->prev = pre_temp;
+        return to_insert;
+    }
+}
 void* smalloc(size_t size) {
     if((size == MIN) || (size > MAX)) {
         return NULL;
     }
-    int bin_index = size / KB;
+
     //Search for free block
-    MallocMetaData* tmp = bins[bin_index].head; // iterator
-    while (tmp != nullptr) {
-        if (tmp->is_free && tmp->size >= size) { // allocate the first free block that fits
-            tmp->is_free = false;
-            num_free_blocks -= 1;
-            num_free_bytes -= tmp->size;
-            return (void*)((char*)tmp + sizeof(MallocMetaData)); //return the block after the meta data
+    for (int bin_index = size / KB ; bin_index < MAX_BIN ; bin_index++) {
+        MallocMetaData* tmp = bins[bin_index].head; // iterator
+        while (tmp != nullptr) {
+            // allocate the first free block that fits
+            if (tmp->is_free && tmp->size >= size) {
+                /* challenge 1 should be used in this conditional (in case tmp->size is strictly greater than size)
+                 * after splitting the block we should update the histogram
+                 *
+                 * */
+                tmp->is_free = false;
+                num_free_blocks -= 1;
+                num_free_bytes -= tmp->size;
+                return (void *) ((char *) tmp + sizeof(MallocMetaData)); //return the block after the meta data
+            }
+            tmp = tmp->next;
         }
-        tmp = tmp->next;
     }
     //No free blocks in desired bin
     void* result = sbrk(size+sizeof(MallocMetaData));
@@ -65,54 +135,8 @@ void* smalloc(size_t size) {
     // handles static variables
     num_allocated_blocks += 1;
     num_allocated_bytes += size;
-    //if bin was empty
-    if(bins[bin_index].head == nullptr) {
-        bins[bin_index].head = meta_data;
-    }
-    else {
-        //iterator
-        MallocMetaData* temp = bins[bin_index].head;
-        MallocMetaData* pre_temp = nullptr;
-
-        // edge case 1: if new MetaData is new head
-        if (bins[bin_index].head->size >= size) {
-            meta_data->next = bins[bin_index].head;
-            bins[bin_index].head->prev = meta_data;
-            bins[bin_index].head = meta_data;
-            return (void*)((char*)meta_data + sizeof(MallocMetaData));
-        }
-        // finding a place between lesser and greater values of size
-        while(temp != nullptr) {
-            pre_temp = temp;
-            if(temp->size <= size && temp->next != NULL && temp->next->size >= size) {
-                meta_data->next = temp->next;
-                temp->next = meta_data;
-                meta_data->prev = temp;
-                meta_data->next->prev = meta_data;
-                return (void*)((char*)meta_data + sizeof(MallocMetaData));
-            }
-            temp = temp->next;
-        }
-//         we reached an edge - no place in between - last MetaData in list
-//        if (pre_temp->size > size) {
-//            if (pre_temp == bins[bin_index].head) {
-//                bins[bin_index].head = meta_data;
-//                meta_data->next = pre_temp;
-//                pre_temp->prev = meta_data;
-//            }
-//            else {
-//                meta_data->prev = pre_temp->prev;
-//                pre_temp->prev->next = meta_data;
-//                meta_data->next = pre_temp;
-//                pre_temp->prev = meta_data;
-//            }
-//        }
-
-        // edge case 2: if new MetaData is new tail
-        meta_data->next = pre_temp->next;
-        pre_temp->next = meta_data;
-        meta_data->prev = pre_temp;
-    }
+    //if no bin was found (and no merging was available?)
+    insertToHistogram(meta_data);
     return (void*)((char*)meta_data + sizeof(MallocMetaData));
 }
 
