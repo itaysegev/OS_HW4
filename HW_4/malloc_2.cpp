@@ -18,8 +18,8 @@ static size_t num_free_bytes = 0;
 static size_t num_allocated_blocks = 0;
 static size_t num_allocated_bytes = 0;
 
-// Global pointer to the head of the list
-MallocMetaData* head = nullptr;
+// pointer to the head of the list
+static MallocMetaData* head = nullptr;
 
 // Functions
 void* smalloc(size_t size) {
