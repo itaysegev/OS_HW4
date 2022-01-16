@@ -5,7 +5,7 @@
 #define MAX 132095
 #define MIN 0
 #define KB  1024
-#define MAX_BIN 128
+#define MAX_BIN 127
 
 
 // Classes
@@ -105,7 +105,7 @@ void* smalloc(size_t size) {
     }
 
     //Search for free block
-    for (int bin_index = size / KB ; bin_index < MAX_BIN ; bin_index++) {
+    for (int bin_index = (size / KB) ; bin_index <= MAX_BIN ; bin_index++) {
         MallocMetaData* tmp = bins[bin_index].head; // iterator
         while (tmp != nullptr) {
             // allocate the first free block that fits
