@@ -153,16 +153,64 @@ void* scalloc(size_t num, size_t size) {
     return allocated_block;
 }
 
+// ========================== Work In Progress! ==========================
 void sfree(void* p) {
     if (p == nullptr) {
         return;
     }
-    MallocMetaData* meta_data = (MallocMetaData*)((char*)p - sizeof(MallocMetaData));
-    if(meta_data->is_free == false) {
-        meta_data->is_free = true;
+    MallocMetaData* mid_meta_data = (MallocMetaData*)((char*)p - sizeof(MallocMetaData));
+    if(mid_meta_data->is_free == false) {
+        mid_meta_data->is_free = true;
         // handles static variables
+        //num_free_blocks += 1;
+        //num_free_bytes += meta_data->size;
+    }
+    // pointer was sent but was already free
+    else {
+        return;
+    }
+
+    // Merging free blocks, if possible
+    MallocMetaData* low_meta_data = mid_meta_data->prev;
+    if (low_meta_data == nullptr || !low_meta_data->is_free) {
+        low_meta_data = nullptr;
+    }
+    MallocMetaData* high_meta_data = mid_meta_data->next;
+    if (high_meta_data == nullptr || !high_meta_data->is_free) {
+        high_meta_data= nullptr;
+    }
+
+    // combine 3 blocks
+    if (low_meta_data != nullptr && high_meta_data != nullptr) {
+        // remove each block from histogram
+        removeFromHistogram(low_meta_data);
+        removeFromHistogram(mid_meta_data);
+        removeFromHistogram(high_meta_data);
+        low_meta_data->size = low_meta_data->size + mid_meta_data->size + high_meta_data->size + (sizeof(MetaData)*2);
+        //low_meta_data->next = high_meta_data->next;
+        insertToHistogram(low_meta_data);
+        num_free_blocks -= 1;
+        num_free_bytes += mid_meta_data->size + (sizeof(MetaData)*2);
+    }
+    else if (low_meta_data != nullptr) {
+        removeFromHistogram(low_meta_data);
+        removeFromHistogram(mid_meta_data);
+        low_meta_data->size = low_meta_data->size + mid_meta_data->size + sizeof(MetaData);
+        //low_meta_data->next = mid_meta_data->next;
+        insertToHistogram(low_meta_data);
+        num_free_bytes += mid_meta_data->size + sizeof(MetaData);
+    }
+    else if(high_meta_data != nullptr) {
+        removeFromHistogram(mid_meta_data);
+        removeFromHistogram(high_meta_data);
+        mid_meta_data->size = mid_meta_data->size + high_meta_data->size + sizeof(MetaData);
+        mid_meta_data->next = high_meta_data->next;
+        num_free_bytes += mid_meta_data->size + sizeof(MetaData);
+    }
+    // no merging possible
+    else {
         num_free_blocks += 1;
-        num_free_bytes += meta_data->size;
+        num_free_bytes += mid_meta_data->size;
     }
 }
 
