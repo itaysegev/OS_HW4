@@ -32,9 +32,9 @@ void* smalloc(size_t size) {
         if (tmp->is_free && tmp->size >= size) { // allocate the first free block that fits
             tmp->is_free = false;
             // handles static variables
-            num_free_blocks--;
+            num_free_blocks -= 1;
             num_free_bytes -= tmp->size;
-            return (void*)((long)tmp+(long)sizeof(MallocMetaData)); //return the block after the meta data
+            return (void*)((char*)tmp + sizeof(MallocMetaData)); //return the block after the meta data
         }
         tmp = tmp->next;
     }
@@ -48,7 +48,7 @@ void* smalloc(size_t size) {
     meta_data->is_free = false;
     meta_data->next = nullptr;
     // handles static variables
-    num_allocated_blocks++;
+    num_allocated_blocks += 1;
     num_allocated_bytes += size;
     //if list was empty
     if(head == nullptr) { 
@@ -63,7 +63,7 @@ void* smalloc(size_t size) {
         temp->next = meta_data;
         meta_data->prev = temp;
     }
-    return (void*)((long)meta_data+(long)sizeof(MallocMetaData));
+    return (void*)((char*)meta_data + sizeof(MallocMetaData));
 }
 
 void* scalloc(size_t num, size_t size) {
@@ -80,12 +80,14 @@ void* scalloc(size_t num, size_t size) {
 }
 
 void sfree(void* p) {
-    MallocMetaData* meta_data;
-    if(p!=nullptr) {
-        meta_data =(MallocMetaData*)((long)p-(long)sizeof(MallocMetaData)); //remove the meta data from given pointer to get to the real block
+    if (p == nullptr) {
+        return;
+    }
+    MallocMetaData* meta_data = (MallocMetaData*)((char*)p - sizeof(MallocMetaData));
+    if(meta_data->is_free == false) {
         meta_data->is_free = true;
         // handles static variables
-        num_free_blocks++;
+        num_free_blocks += 1;
         num_free_bytes += meta_data->size;
     }
 }
