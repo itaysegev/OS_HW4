@@ -117,59 +117,6 @@ void* srealloc(void* oldp, size_t size) {
 }
 
 // Stats Functions
-//size_t _num_free_blocks() {
-//    size_t counter = 0;
-//    MallocMetaData* tmp = head;
-//    while(tmp != nullptr) {
-//        if(tmp->is_free) {
-//            counter++;
-//        }
-//        tmp = tmp->next;
-//    }
-//    return counter;
-//}
-//
-//size_t _num_free_bytes() {
-//    size_t sum = 0;
-//    MallocMetaData* tmp = head;
-//    while(tmp != nullptr) {
-//        if(tmp->is_free) {
-//            sum+=tmp->size;
-//        }
-//        tmp = tmp->next;
-//    }
-//    return sum;
-//}
-//
-//size_t _num_allocated_blocks() {
-//    size_t counter = 0;
-//    MallocMetaData* tmp = head;
-//    while(tmp != nullptr) {
-//        counter++;
-//        tmp = tmp->next;
-//    }
-//    return counter;
-//}
-//
-//size_t _num_allocated_bytes() {
-//    size_t sum = 0;
-//    MallocMetaData* tmp = head;
-//    while(tmp != nullptr) {
-//        sum+=tmp->size;
-//        tmp = tmp->next;
-//    }
-//    return sum;
-//}
-//
-//size_t _size_meta_data() {
-//    return sizeof(MallocMetaData);
-//}
-//
-//size_t _num_meta_data_bytes() {
-//    return _size_meta_data() * _num_allocated_blocks();
-//}
-//
-
  size_t _num_free_blocks() {
      return num_free_blocks;
  }
