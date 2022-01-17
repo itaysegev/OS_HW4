@@ -17,7 +17,7 @@ public:
     MallocMetaData* next;
     MallocMetaData* prev;
 
-    //pointers to list
+    //pointers to list in bins
     MallocMetaData* next_in_bin;
     MallocMetaData* prev_in_bin;
 
@@ -124,7 +124,7 @@ void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
 
 
     insertToHistogram(splitted_block_metadata); 
-    //update list
+    //update list in heap
     splitted_block_metadata->next = block->next;
     splitted_block_metadata->prev = block;
     if(block->next!=nullptr) {
@@ -227,23 +227,8 @@ void merge(MallocMetaData* metadata) {
 
 }
 
-// ========================== Work In Progress! ==========================
-void sfree(void* p) {
-    if (p == nullptr) {
-        return;
-    }
-    MallocMetaData* mid_meta_data = (MallocMetaData*)((char*)p - sizeof(MallocMetaData));
-    if(mid_meta_data->is_free == false) {
-        mid_meta_data->is_free = true;
-        // handles static variables
-        //num_free_blocks += 1;
-        //num_free_bytes += meta_data->size;
-    }
-    // pointer was sent but was already free
-    else {
-        return;
-    }
-
+// Challenge 2
+void mergeFreeBlocks(MallocMetaData* mid_meta_data) {
     // Merging free blocks, if possible
     MallocMetaData* low_meta_data = mid_meta_data->prev;
     if (low_meta_data == nullptr || !low_meta_data->is_free) {
@@ -254,38 +239,56 @@ void sfree(void* p) {
         high_meta_data= nullptr;
     }
 
-    // combine 3 blocks
+    // merge 3 blocks
     if (low_meta_data != nullptr && high_meta_data != nullptr) {
         // remove each block from histogram
         removeFromHistogram(low_meta_data);
         removeFromHistogram(mid_meta_data);
         removeFromHistogram(high_meta_data);
-        low_meta_data->size = low_meta_data->size + mid_meta_data->size + high_meta_data->size + (sizeof(MetaData)*2);
-        //low_meta_data->next = high_meta_data->next;
+        low_meta_data->size = low_meta_data->size + mid_meta_data->size + high_meta_data->size + (sizeof(MallocMetaData)*2);
+        low_meta_data->next = high_meta_data->next;
         insertToHistogram(low_meta_data);
         num_free_blocks -= 1;
-        num_free_bytes += mid_meta_data->size + (sizeof(MetaData)*2);
+        num_free_bytes += mid_meta_data->size + (sizeof(MallocMetaData)*2);
     }
+        // merge lower and current
     else if (low_meta_data != nullptr) {
         removeFromHistogram(low_meta_data);
         removeFromHistogram(mid_meta_data);
-        low_meta_data->size = low_meta_data->size + mid_meta_data->size + sizeof(MetaData);
-        //low_meta_data->next = mid_meta_data->next;
+        low_meta_data->size = low_meta_data->size + mid_meta_data->size + sizeof(MallocMetaData);
+        low_meta_data->next = mid_meta_data->next;
         insertToHistogram(low_meta_data);
-        num_free_bytes += mid_meta_data->size + sizeof(MetaData);
+        num_free_bytes += mid_meta_data->size + sizeof(MallocMetaData);
     }
+        // merge higher and current
     else if(high_meta_data != nullptr) {
         removeFromHistogram(mid_meta_data);
         removeFromHistogram(high_meta_data);
-        mid_meta_data->size = mid_meta_data->size + high_meta_data->size + sizeof(MetaData);
+        mid_meta_data->size = mid_meta_data->size + high_meta_data->size + sizeof(MallocMetaData);
         mid_meta_data->next = high_meta_data->next;
-        num_free_bytes += mid_meta_data->size + sizeof(MetaData);
+        insertToHistogram(mid_meta_data);
+        num_free_bytes += mid_meta_data->size + sizeof(MallocMetaData);
     }
-    // no merging possible
+        // no merging possible
     else {
         num_free_blocks += 1;
         num_free_bytes += mid_meta_data->size;
     }
+}
+
+void sfree(void* p) {
+    if (p == nullptr) {
+        return;
+    }
+    MallocMetaData* mid_meta_data = (MallocMetaData*)((char*)p - sizeof(MallocMetaData));
+    if(mid_meta_data->is_free == false) {
+        mid_meta_data->is_free = true;
+    }
+    // pointer sent was already free
+    else {
+        return;
+    }
+    mergeFreeBlocks(mid_meta_data);
 }
 
 void* srealloc(void* oldp, size_t size) {
