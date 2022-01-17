@@ -109,6 +109,33 @@ static MallocMetaData* insertToHistogram(MallocMetaData* to_insert) {
     }
 }
 
+static void removeFromMmapList(MallocMetaData* to_remove) {
+    if (mmap_head == to_remove) {
+        mmap_head = to_remove->next;
+        if(to_remove->next != nullptr)
+            to_remove->next->prev = nullptr;
+    }
+    else {
+        to_remove->prev->next = to_remove->next;
+        if (to_remove->next != nullptr) {
+            to_remove->next->prev = to_remove->prev;
+        }
+    }
+    to_remove->prev = nullptr;
+    to_remove->next = nullptr;
+}
+
+static void insertToMmapList(MallocMetaData* to_insert) {
+    if (mmap_head == nullptr) {
+        mmap_head = to_insert;
+    }
+    else {
+        to_insert->next = mmap_head;
+        mmap_head->prev = to_insert;
+        mmap_head = to_insert;
+    }
+}
+
 void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
     long new_addr = long(block)+long(first_block_size)+long(sizeof (MallocMetaData));
     void* splitted_block = (void*)(new_addr);
@@ -137,6 +164,17 @@ void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
     
 }
 
+static void updateNewAllocatedMetaData(MallocMetaData* meta_data, size_t size) {
+    meta_data->size = size;
+    meta_data->is_free = false;
+    meta_data->next = nullptr;
+    meta_data->prev = nullptr;
+    meta_data->next_in_bin = nullptr;
+    meta_data->prev_in_bin = nullptr;
+    // handles static variables
+    num_allocated_blocks += 1;
+    num_allocated_bytes += size;
+}
 
 void* smalloc(size_t size) {
     if((size == MIN) || (size > MAX)) {
@@ -176,16 +214,9 @@ void* smalloc(size_t size) {
             return NULL;
         }
     }
+
     MallocMetaData *meta_data = (MallocMetaData *) result;
-    meta_data->size = size;
-    meta_data->is_free = false;
-    meta_data->next = nullptr;
-    meta_data->prev = nullptr;
-    meta_data->next_in_bin = nullptr;
-    meta_data->prev_in_bin = nullptr;
-    // handles static variables
-    num_allocated_blocks += 1;
-    num_allocated_bytes += size;
+    updateNewAllocatedMetaData(meta_data, size);
 
     // insert to histogram
     if (size <= MAX_FOR_BINS) {
@@ -193,14 +224,7 @@ void* smalloc(size_t size) {
     }
     // or insert to mmap list
     else {
-        if (mmap_head == nullptr) {
-            mmap_head = meta_data;
-        }
-        else {
-            meta_data->next = mmap_head;
-            mmap_head->prev = meta_data;
-            mmap_head = meta_data;
-        }
+        insertToMmapList(meta_data);
     }
     return (void *) ((char *) meta_data + sizeof(MallocMetaData));
 }
@@ -322,18 +346,7 @@ void sfree(void* p) {
     }
     // if block is from mmap list
     else {
-        if (mmap_head == mid_meta_data) {
-            mmap_head = mid_meta_data->next;
-            mid_meta_data->next->prev = nullptr;
-        }
-        else {
-            mid_meta_data->prev->next = mid_meta_data->next;
-            if (mid_meta_data->next != nullptr) {
-                mid_meta_data->next->prev = mid_meta_data->prev;
-            }
-        }
-        mid_meta_data->prev = nullptr;
-        mid_meta_data->next = nullptr;
+        removeFromMmapList(mid_meta_data);
         munmap(mid_meta_data, mid_meta_data->size + sizeof(MallocMetaData));
     }
 }
