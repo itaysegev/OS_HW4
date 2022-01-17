@@ -8,6 +8,7 @@
 #define MIN 0
 #define KB  1024
 #define MAX_BIN 127
+#define MIN_MEM_AFTER_SPLIT 128
 
 
 // Classes
@@ -138,13 +139,15 @@ static void insertToMmapList(MallocMetaData* to_insert) {
 
 void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
     removeFromHistogram(block);
+    num_free_bytes -= block->size;
+
     long new_addr = long(block) + long(sizeof(MallocMetaData)) + long(first_block_size);
     void* splitted_block = (void*)(new_addr);
 
     //update second block data
     MallocMetaData* splitted_block_metadata = (MallocMetaData*)splitted_block;
     splitted_block_metadata->is_free = true;
-    size_t new_size = block->size - first_block_size - (sizeof(MallocMetaData) * 2);
+    size_t new_size = block->size - first_block_size - sizeof(MallocMetaData);
     splitted_block_metadata->size = new_size;
 
     //update first block data
@@ -160,9 +163,9 @@ void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
         block->next->prev = splitted_block_metadata;
     }
     block->next = splitted_block_metadata;
+
     //update Static Variables
-    num_free_blocks++;
-    
+    num_free_bytes += new_size;
 }
 
 static void updateNewAllocatedMetaData(MallocMetaData* meta_data, size_t size) {
@@ -187,15 +190,20 @@ void* smalloc(size_t size) {
         MallocMetaData* tmp = bins[bin_index].head; // iterator
         while (tmp != nullptr) {
             // allocate the first free block that fits
-            if (tmp->is_free && tmp->size >= size) {
+            if (tmp->is_free && (tmp->size >= size)) {
                 /* challenge 1 should be used in this conditional (in case tmp->size is strictly greater than size)
                  * after splitting the block we should update the histogram
                  *
                  * */
-                tmp->is_free = false;
-                num_free_blocks -= 1;
-                num_free_bytes -= tmp->size;
-                return (void *) ((char *) tmp + sizeof(MallocMetaData)); //return the block after the meta data
+                if (tmp->size - size - sizeof(MallocMetaData) >= MIN_MEM_AFTER_SPLIT) {
+                    splitFreeBlock(tmp, size);
+                }
+                else {
+                    tmp->is_free = false;
+                    num_free_blocks -= 1;
+                    num_free_bytes -= tmp->size;
+                }
+                return (void *) ((char *) tmp + sizeof(MallocMetaData));
             }
             tmp = tmp->next;
         }
