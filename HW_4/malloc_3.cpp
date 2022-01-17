@@ -137,28 +137,29 @@ static void insertToMmapList(MallocMetaData* to_insert) {
 }
 
 void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
-    long new_addr = long(block)+long(first_block_size)+long(sizeof (MallocMetaData));
+    removeFromHistogram(block);
+    long new_addr = long(block) + long(sizeof(MallocMetaData)) + long(first_block_size);
     void* splitted_block = (void*)(new_addr);
 
     //update second block data
     MallocMetaData* splitted_block_metadata = (MallocMetaData*)splitted_block;
     splitted_block_metadata->is_free = true;
-    size_t new_size = block->size - first_block_size - sizeof(MallocMetaData);
+    size_t new_size = block->size - first_block_size - (sizeof(MallocMetaData) * 2);
     splitted_block_metadata->size = new_size;
 
     //update first block data
     block->size = first_block_size;
     block->is_free = false;
 
-
+    insertToHistogram(block);
     insertToHistogram(splitted_block_metadata); 
     //update list in heap
     splitted_block_metadata->next = block->next;
     splitted_block_metadata->prev = block;
     if(block->next!=nullptr) {
         block->next->prev = splitted_block_metadata;
-        block->next = splitted_block_metadata;
     }
+    block->next = splitted_block_metadata;
     //update Static Variables
     num_free_blocks++;
     
@@ -228,7 +229,6 @@ void* smalloc(size_t size) {
     }
     return (void *) ((char *) meta_data + sizeof(MallocMetaData));
 }
-
 
 void* scalloc(size_t num, size_t size) {
     if (size == MIN || size > MAX) {
@@ -359,8 +359,18 @@ void* srealloc(void* oldp, size_t size) {
         return smalloc(size);
     }
     MallocMetaData* old_metadata =(MallocMetaData*)((long)oldp-long(sizeof(MallocMetaData)));
-    if(size>= 128*KB) {
-        /// challenge 4
+    if(size > MAX_FOR_BINS) {
+        if(old_metadata->size < size) {
+            void* new_mapped_area = smalloc(size);
+            if (new_mapped_area != NULL){
+                std::memcpy(new_mapped_area, oldp, old_metadata->size+sizeof(MallocMetaData));
+                sfree(oldp);
+            }
+            return new_mapped_area;
+        }
+        else {
+            return oldp;
+        }
     }
     // option a
     if(old_metadata->size >= size) {
