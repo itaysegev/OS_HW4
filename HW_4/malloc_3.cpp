@@ -1,8 +1,9 @@
 #include <cstring>
 #include <unistd.h>
 
+#define MAX 100000000
 // max bin hold less than (128 + 1) * 1024 = 132096
-#define MAX 132095
+#define MAX_FOR_BINS 132095
 #define MIN 0
 #define KB  1024
 #define MAX_BIN 127
