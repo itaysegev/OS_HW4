@@ -13,23 +13,21 @@ class MallocMetaData {
 public:
     size_t size;
     bool is_free;
+
     // pointers to heap sequence
     MallocMetaData* next;
     MallocMetaData* prev;
-
-    //pointers to list in bins
+    /* pointers to list in bins
+     * bin index can be computed using size / KB (=1024)
+     * */
     MallocMetaData* next_in_bin;
     MallocMetaData* prev_in_bin;
-
-
-    // bin index can be computed using size / KB (=1024)
 };
 
 class Bin {
 public:
     // Data members
     MallocMetaData* head;
-
     // Methods
     Bin() : head(nullptr) {}
 };
