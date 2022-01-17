@@ -1,8 +1,9 @@
 #include <cstring>
 #include <unistd.h>
 
+#define MAX 100000000
 // max bin hold less than (128 + 1) * 1024 = 132096
-#define MAX 132095
+#define MAX_FOR_BINS 132095
 #define MIN 0
 #define KB  1024
 #define MAX_BIN 127
@@ -13,21 +14,21 @@ class MallocMetaData {
 public:
     size_t size;
     bool is_free;
-    // pointers to bin list
+
+    // pointers to heap sequence
     MallocMetaData* next;
     MallocMetaData* prev;
-
-    //TODO: pointers to prev, and next in heap sequence
-
-
-    // bin index can be computed using size / KB (=1024)
+    /* pointers to list in bins
+     * bin index can be computed using size / KB (=1024)
+     * */
+    MallocMetaData* next_in_bin;
+    MallocMetaData* prev_in_bin;
 };
 
 class Bin {
 public:
     // Data members
     MallocMetaData* head;
-
     // Methods
     Bin() : head(nullptr) {}
 };
@@ -42,33 +43,32 @@ static size_t num_allocated_bytes = 0;
 
 
 // Functions
-
 static MallocMetaData* removeFromHistogram(MallocMetaData* to_remove) {
     int bin_index = to_remove->size / KB;
 
     if (to_remove == bins[bin_index].head) {
-        bins[bin_index].head = to_remove->next;
-        to_remove->next = nullptr;
+        bins[bin_index].head = to_remove->next_in_bin;
+        to_remove->next_in_bin = nullptr;
         if (bins[bin_index].head != nullptr) {
-            bins[bin_index].head->prev = nullptr;
+            bins[bin_index].head->prev_in_bin = nullptr;
         }
         return to_remove;
     }
 
     // in case is not head of bin
-    to_remove->next->prev = to_remove->prev;
-    if(to_remove->prev != nullptr) {
-        to_remove->prev->next = to_remove->next;
+    to_remove->next_in_bin->prev_in_bin = to_remove->prev_in_bin;
+    if(to_remove->prev_in_bin != nullptr) {
+        to_remove->prev_in_bin->next_in_bin = to_remove->next_in_bin;
     }
-    to_remove->next = nullptr;
-    to_remove->prev = nullptr;
+    to_remove->next_in_bin = nullptr;
+    to_remove->prev_in_bin = nullptr;
     return to_remove;
 }
 
 static MallocMetaData* insertToHistogram(MallocMetaData* to_insert) {
     int bin_index = to_insert->size / KB;
-    to_insert->next = nullptr;
-    to_insert->prev = nullptr;
+    to_insert->next_in_bin = nullptr;
+    to_insert->prev_in_bin = nullptr;
 
     if (bins[bin_index].head == nullptr) {
         bins[bin_index].head = to_insert;
@@ -81,28 +81,28 @@ static MallocMetaData* insertToHistogram(MallocMetaData* to_insert) {
 
         // edge case 1: if new MetaData is new head
         if (bins[bin_index].head->size >= to_insert->size) {
-            to_insert->next = bins[bin_index].head;
-            bins[bin_index].head->prev = to_insert;
+            to_insert->next_in_bin = bins[bin_index].head;
+            bins[bin_index].head->prev_in_bin = to_insert;
             bins[bin_index].head = to_insert;
             return to_insert;
         }
         // finding a place between lesser and greater values of size
         while (temp != nullptr) {
             pre_temp = temp;
-            if (temp->size <= to_insert->size && temp->next != NULL && temp->next->size >= to_insert->size) {
-                to_insert->next = temp->next;
-                temp->next = to_insert;
-                to_insert->prev = temp;
-                to_insert->next->prev = to_insert;
+            if (temp->size <= to_insert->size && temp->next_in_bin != NULL && temp->next_in_bin->size >= to_insert->size) {
+                to_insert->next_in_bin = temp->next_in_bin;
+                temp->next_in_bin = to_insert;
+                to_insert->prev_in_bin = temp;
+                to_insert->next_in_bin->prev_in_bin = to_insert;
                 return to_insert;
             }
-            temp = temp->next;
+            temp = temp->next_in_bin;
         }
 
         // edge case 2: if new MetaData is new tail
-        to_insert->next = pre_temp->next;
-        pre_temp->next = to_insert;
-        to_insert->prev = pre_temp;
+        to_insert->next_in_bin = pre_temp->next_in_bin;
+        pre_temp->next_in_bin = to_insert;
+        to_insert->prev_in_bin = pre_temp;
         return to_insert;
     }
 }
@@ -123,7 +123,7 @@ void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
 
 
     insertToHistogram(splitted_block_metadata); 
-    //update list
+    //update list in heap
     splitted_block_metadata->next = block->next;
     splitted_block_metadata->prev = block;
     if(block->next!=nullptr) {
@@ -226,6 +226,70 @@ void merge(MallocMetaData* metadata) {
 
 }
 
+// Challenge 2
+void mergeFreeBlocks(MallocMetaData* mid_meta_data) {
+    // Merging free blocks, if possible
+    MallocMetaData* low_meta_data = mid_meta_data->prev;
+    if (low_meta_data == nullptr || !low_meta_data->is_free) {
+        low_meta_data = nullptr;
+    }
+    MallocMetaData* high_meta_data = mid_meta_data->next;
+    if (high_meta_data == nullptr || !high_meta_data->is_free) {
+        high_meta_data= nullptr;
+    }
+
+    // merge 3 blocks
+    if (low_meta_data != nullptr && high_meta_data != nullptr) {
+        // remove each block from histogram
+        removeFromHistogram(low_meta_data);
+        removeFromHistogram(mid_meta_data);
+        removeFromHistogram(high_meta_data);
+        low_meta_data->size = low_meta_data->size + mid_meta_data->size + high_meta_data->size + (sizeof(MallocMetaData)*2);
+        low_meta_data->next = high_meta_data->next;
+        insertToHistogram(low_meta_data);
+        num_free_blocks -= 1;
+        num_free_bytes += mid_meta_data->size + (sizeof(MallocMetaData)*2);
+    }
+        // merge lower and current
+    else if (low_meta_data != nullptr) {
+        removeFromHistogram(low_meta_data);
+        removeFromHistogram(mid_meta_data);
+        low_meta_data->size = low_meta_data->size + mid_meta_data->size + sizeof(MallocMetaData);
+        low_meta_data->next = mid_meta_data->next;
+        insertToHistogram(low_meta_data);
+        num_free_bytes += mid_meta_data->size + sizeof(MallocMetaData);
+    }
+        // merge higher and current
+    else if(high_meta_data != nullptr) {
+        removeFromHistogram(mid_meta_data);
+        removeFromHistogram(high_meta_data);
+        mid_meta_data->size = mid_meta_data->size + high_meta_data->size + sizeof(MallocMetaData);
+        mid_meta_data->next = high_meta_data->next;
+        insertToHistogram(mid_meta_data);
+        num_free_bytes += mid_meta_data->size + sizeof(MallocMetaData);
+    }
+        // no merging possible
+    else {
+        num_free_blocks += 1;
+        num_free_bytes += mid_meta_data->size;
+    }
+}
+
+void sfree(void* p) {
+    if (p == nullptr) {
+        return;
+    }
+    MallocMetaData* mid_meta_data = (MallocMetaData*)((char*)p - sizeof(MallocMetaData));
+    if(mid_meta_data->is_free == false) {
+        mid_meta_data->is_free = true;
+    }
+    // pointer sent was already free
+    else {
+        return;
+    }
+    mergeFreeBlocks(mid_meta_data);
+}
+
 void* srealloc(void* oldp, size_t size) {
     if (size == MIN || size > MAX) {
         return NULL;
@@ -280,7 +344,7 @@ void* srealloc(void* oldp, size_t size) {
         old_metadata->prev->is_free = false;
         MallocMetaData* prev_metadata = old_metadata->prev;
         std::memmove((void*)((long)(old_metadata->prev)+
-                        (long)sizeof (MallocMetaData)), oldp, old_metadata->size);
+                             (long)sizeof (MallocMetaData)), oldp, old_metadata->size);
 
         if(old_metadata->prev->size >=size+sizeof(MallocMetaData)+128) {
             splitFreeBlock(old_metadata->prev, size);
@@ -306,92 +370,6 @@ void* srealloc(void* oldp, size_t size) {
     sfree(oldp);
     return (void*)new_metadata;
 }
-
-
-// ========================== Work In Progress! ==========================
-void sfree(void* p) {
-    if (p == nullptr) {
-        return;
-    }
-    MallocMetaData* mid_meta_data = (MallocMetaData*)((char*)p - sizeof(MallocMetaData));
-    if(mid_meta_data->is_free == false) {
-        mid_meta_data->is_free = true;
-        // handles static variables
-        //num_free_blocks += 1;
-        //num_free_bytes += meta_data->size;
-    }
-    // pointer was sent but was already free
-    else {
-        return;
-    }
-
-    // Merging free blocks, if possible
-    MallocMetaData* low_meta_data = mid_meta_data->prev;
-    if (low_meta_data == nullptr || !low_meta_data->is_free) {
-        low_meta_data = nullptr;
-    }
-    MallocMetaData* high_meta_data = mid_meta_data->next;
-    if (high_meta_data == nullptr || !high_meta_data->is_free) {
-        high_meta_data= nullptr;
-    }
-
-    // combine 3 blocks
-    if (low_meta_data != nullptr && high_meta_data != nullptr) {
-        // remove each block from histogram
-        removeFromHistogram(low_meta_data);
-        removeFromHistogram(mid_meta_data);
-        removeFromHistogram(high_meta_data);
-        low_meta_data->size = low_meta_data->size + mid_meta_data->size + high_meta_data->size + (sizeof(MetaData)*2);
-        //low_meta_data->next = high_meta_data->next;
-        insertToHistogram(low_meta_data);
-        num_free_blocks -= 1;
-        num_free_bytes += mid_meta_data->size + (sizeof(MetaData)*2);
-    }
-    else if (low_meta_data != nullptr) {
-        removeFromHistogram(low_meta_data);
-        removeFromHistogram(mid_meta_data);
-        low_meta_data->size = low_meta_data->size + mid_meta_data->size + sizeof(MetaData);
-        //low_meta_data->next = mid_meta_data->next;
-        insertToHistogram(low_meta_data);
-        num_free_bytes += mid_meta_data->size + sizeof(MetaData);
-    }
-    else if(high_meta_data != nullptr) {
-        removeFromHistogram(mid_meta_data);
-        removeFromHistogram(high_meta_data);
-        mid_meta_data->size = mid_meta_data->size + high_meta_data->size + sizeof(MetaData);
-        mid_meta_data->next = high_meta_data->next;
-        num_free_bytes += mid_meta_data->size + sizeof(MetaData);
-    }
-    // no merging possible
-    else {
-        num_free_blocks += 1;
-        num_free_bytes += mid_meta_data->size;
-    }
-}
-
-// void* srealloc(void* oldp, size_t size) {
-//     if (size == MIN || size > MAX) {
-//         return NULL;
-//     }
-
-//     if (oldp == NULL) {
-//         return smalloc(size);
-//     }
-
-//     MallocMetaData* data = (MallocMetaData*)((char*)oldp - sizeof(MallocMetaData));
-//     if (data->size < size) {
-//         void* allocated_block = smalloc(size);
-//         if (allocated_block != NULL) {
-//             // todo: not sure if we need to check if memcpy was successful
-//             std::memcpy(allocated_block, oldp, data->size);
-//             sfree(oldp);
-//         }
-//         return allocated_block;
-//     }
-
-//     // reaches here if block can be reused
-//     return oldp;
-// }
 
 // Stats Functions
 size_t _num_free_blocks() {
