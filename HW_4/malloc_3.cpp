@@ -1,5 +1,6 @@
 #include <cstring>
 #include <unistd.h>
+#include <sys/mman.h>
 
 #define MAX 100000000
 // max bin hold less than (128 + 1) * 1024 = 132096
