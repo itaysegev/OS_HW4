@@ -139,7 +139,7 @@ static void insertToMmapList(MallocMetaData* to_insert) {
 
 void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
     removeFromHistogram(block);
-    num_free_bytes -= block->size;
+    num_free_bytes -= block->size; //first block allocated
 
     long new_addr = long(block) + long(sizeof(MallocMetaData)) + long(first_block_size);
     void* splitted_block = (void*)(new_addr);
@@ -153,8 +153,8 @@ void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
     //update first block data
     block->size = first_block_size;
     block->is_free = false;
-
-    insertToHistogram(block);
+ 
+    //insertToHistogram(block); // first block allocated  is no longer free
     insertToHistogram(splitted_block_metadata); 
     //update list in heap
     splitted_block_metadata->next = block->next;
@@ -165,7 +165,11 @@ void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
     block->next = splitted_block_metadata;
 
     //update Static Variables
-    num_free_bytes += new_size;
+    num_free_bytes -= block->size; //first block allocated
+    ///number of  free blocks remain the same
+    num_allocated_blocks ++;
+    num_allocated_bytes += block->size
+
 }
 
 static void updateNewAllocatedMetaData(MallocMetaData* meta_data, size_t size) {
@@ -279,12 +283,12 @@ void merge(MallocMetaData* metadata) {
     MallocMetaData* next = metadata->next;
     MallocMetaData* prev = metadata->prev;
     if(next!=nullptr && next->is_free) {
-        merge_with_next(metadata);
+        merge_with_next(metadata); //update  static
     }
     if(prev!=nullptr && prev->is_free) {
-        merge_with_prev(metadata);
+        merge_with_prev(metadata); //update static var
     }
-
+    
 }
 
 // Challenge 2
@@ -432,7 +436,7 @@ void* srealloc(void* oldp, size_t size) {
                        (long)sizeof(MallocMetaData));
     }
     //wilderness challenge 3
-    if(old_metadata->next==nullptr) {
+    if(old_metadata->next==nullptr) { // last in the heap
         if(sbrk(size-old_metadata->size)==(void*)-1 ) {
             return NULL;
         }
@@ -440,7 +444,7 @@ void* srealloc(void* oldp, size_t size) {
         old_metadata->size = size;
         return (void*)((long)old_metadata+(long)sizeof(MallocMetaData));
     }
-    //smalloc
+    //smalloc option e & f 
     MallocMetaData* new_metadata = (MallocMetaData*)smalloc(size);
     if(new_metadata ==nullptr) {
         return NULL;
@@ -474,3 +478,68 @@ size_t _num_meta_data_bytes() {
 size_t _size_meta_data() {
     return sizeof(MallocMetaData);
 }
+
+
+
+// size_t _num_free_blocks() {
+//     size_t counter = 0;
+//     MallocMetaData* tmp = head; //head of the heap list
+//     while(tmp != nullptr) {
+//         if(tmp->is_free) {
+//             counter++;
+//         }
+//         tmp = tmp->next;
+//     }
+//     return counter;
+// }
+
+// size_t _num_free_bytes() {
+//     size_t sum = 0;
+//     MallocMetaData* tmp = head;
+//     while(tmp != nullptr) {
+//         if(tmp->is_free) {
+//             sum+=tmp->size;
+//         }
+//         tmp = tmp->next;
+//     }
+//     return sum;
+// }
+
+// size_t _num_allocated_blocks() {
+//     size_t counter = 0;
+//     MallocMetaData* tmp = head;
+//     while(tmp != nullptr) {
+//         counter++;
+//         tmp = tmp->next;
+//     }
+//     MallocMetaData* mmap_tmp = mmap_head;
+//     while(mmap_tmp!=nullptr)
+//     {
+//         counter++;
+//         mmap_tmp = mmap_tmp->next;
+//     }
+//     return counter;
+// }
+
+// size_t _num_allocated_bytes() {
+//     size_t sum = 0;
+//     MallocMetaData* tmp = head;
+//     while(tmp != nullptr) {
+//         sum+=tmp->size;
+//         tmp = tmp->next;
+//     }
+//     MallocMetaData* mmap_tmp = mmap_head;
+//     while(mmap_tmp != nullptr) {
+//         sum+=mmap_tmp->size;
+//         mmap_tmp = mmap_tmp->next;
+//     }
+//     return sum;
+// }
+
+// size_t _size_meta_data() {
+//     return sizeof(MallocMetaData);
+// }
+
+// size_t _num_meta_data_bytes() {
+//     return _size_meta_data() * _num_allocated_blocks();
+// }
