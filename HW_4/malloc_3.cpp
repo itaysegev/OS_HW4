@@ -1,5 +1,6 @@
 #include <cstring>
 #include <unistd.h>
+#include <sys/mman.h>
 
 #define MAX 100000000
 // max bin hold less than (128 + 1) * 1024 = 132096
@@ -7,6 +8,7 @@
 #define MIN 0
 #define KB  1024
 #define MAX_BIN 127
+#define MIN_MEM_AFTER_SPLIT 128
 
 
 // Classes
@@ -15,7 +17,7 @@ public:
     size_t size;
     bool is_free;
 
-    // pointers to heap sequence
+    // pointers to heap sequence | mmap list
     MallocMetaData* next;
     MallocMetaData* prev;
     /* pointers to list in bins
@@ -36,6 +38,7 @@ public:
 
 // Static Variables
 static Bin bins[128];
+static MallocMetaData* mmap_head = nullptr;
 static size_t num_free_blocks = 0;
 static size_t num_free_bytes = 0;
 static size_t num_allocated_blocks = 0;
@@ -107,8 +110,38 @@ static MallocMetaData* insertToHistogram(MallocMetaData* to_insert) {
     }
 }
 
+static void removeFromMmapList(MallocMetaData* to_remove) {
+    if (mmap_head == to_remove) {
+        mmap_head = to_remove->next;
+        if(to_remove->next != nullptr)
+            to_remove->next->prev = nullptr;
+    }
+    else {
+        to_remove->prev->next = to_remove->next;
+        if (to_remove->next != nullptr) {
+            to_remove->next->prev = to_remove->prev;
+        }
+    }
+    to_remove->prev = nullptr;
+    to_remove->next = nullptr;
+}
+
+static void insertToMmapList(MallocMetaData* to_insert) {
+    if (mmap_head == nullptr) {
+        mmap_head = to_insert;
+    }
+    else {
+        to_insert->next = mmap_head;
+        mmap_head->prev = to_insert;
+        mmap_head = to_insert;
+    }
+}
+
 void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
-    long new_addr = long(block)+long(first_block_size)+long(sizeof (MallocMetaData));
+    removeFromHistogram(block);
+    num_free_bytes -= block->size;
+
+    long new_addr = long(block) + long(sizeof(MallocMetaData)) + long(first_block_size);
     void* splitted_block = (void*)(new_addr);
 
     //update second block data
@@ -121,20 +154,31 @@ void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
     block->size = first_block_size;
     block->is_free = false;
 
-
+    insertToHistogram(block);
     insertToHistogram(splitted_block_metadata); 
     //update list in heap
     splitted_block_metadata->next = block->next;
     splitted_block_metadata->prev = block;
     if(block->next!=nullptr) {
         block->next->prev = splitted_block_metadata;
-        block->next = splitted_block_metadata;
     }
+    block->next = splitted_block_metadata;
+
     //update Static Variables
-    num_free_blocks++;
-    
+    num_free_bytes += new_size;
 }
 
+static void updateNewAllocatedMetaData(MallocMetaData* meta_data, size_t size) {
+    meta_data->size = size;
+    meta_data->is_free = false;
+    meta_data->next = nullptr;
+    meta_data->prev = nullptr;
+    meta_data->next_in_bin = nullptr;
+    meta_data->prev_in_bin = nullptr;
+    // handles static variables
+    num_allocated_blocks += 1;
+    num_allocated_bytes += size;
+}
 
 void* smalloc(size_t size) {
     if((size == MIN) || (size > MAX)) {
@@ -146,35 +190,52 @@ void* smalloc(size_t size) {
         MallocMetaData* tmp = bins[bin_index].head; // iterator
         while (tmp != nullptr) {
             // allocate the first free block that fits
-            if (tmp->is_free && tmp->size >= size) {
+            if (tmp->is_free && (tmp->size >= size)) {
                 /* challenge 1 should be used in this conditional (in case tmp->size is strictly greater than size)
                  * after splitting the block we should update the histogram
                  *
                  * */
-                tmp->is_free = false;
-                num_free_blocks -= 1;
-                num_free_bytes -= tmp->size;
-                return (void *) ((char *) tmp + sizeof(MallocMetaData)); //return the block after the meta data
+                if (tmp->size - size - sizeof(MallocMetaData) >= MIN_MEM_AFTER_SPLIT) {
+                    splitFreeBlock(tmp, size);
+                }
+                else {
+                    tmp->is_free = false;
+                    num_free_blocks -= 1;
+                    num_free_bytes -= tmp->size;
+                }
+                return (void *) ((char *) tmp + sizeof(MallocMetaData));
             }
             tmp = tmp->next;
         }
     }
+    void* result = nullptr;
     //No free blocks in desired bin
-    void* result = sbrk(size+sizeof(MallocMetaData));
-    if (result == (void*)(-1)) {
-        return NULL;
+    if (size <= MAX_FOR_BINS) {
+        result = sbrk(size + sizeof(MallocMetaData));
+        if (result == (void *) (-1)) {
+            return NULL;
+        }
     }
-    MallocMetaData* meta_data =(MallocMetaData*) result;
-    meta_data->size = size;
-    meta_data->is_free = false;
-    meta_data->next = nullptr;
-    meta_data->prev = nullptr;
-    // handles static variables
-    num_allocated_blocks += 1;
-    num_allocated_bytes += size;
-    //if no bin was found (and no merging was available?)
-    insertToHistogram(meta_data);
-    return (void*)((char*)meta_data + sizeof(MallocMetaData));
+    // in case we have allocation of 128kb or more
+    else {
+        result = mmap(NULL, size+sizeof(MallocMetaData), PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
+        if (result == (void *) (-1)) {
+            return NULL;
+        }
+    }
+
+    MallocMetaData *meta_data = (MallocMetaData *) result;
+    updateNewAllocatedMetaData(meta_data, size);
+
+    // insert to histogram
+    if (size <= MAX_FOR_BINS) {
+        insertToHistogram(meta_data);
+    }
+    // or insert to mmap list
+    else {
+        insertToMmapList(meta_data);
+    }
+    return (void *) ((char *) meta_data + sizeof(MallocMetaData));
 }
 
 void* scalloc(size_t num, size_t size) {
@@ -280,14 +341,22 @@ void sfree(void* p) {
         return;
     }
     MallocMetaData* mid_meta_data = (MallocMetaData*)((char*)p - sizeof(MallocMetaData));
-    if(mid_meta_data->is_free == false) {
-        mid_meta_data->is_free = true;
+    // if block is in histogram
+    if (mid_meta_data->size <= MAX_FOR_BINS) {
+        if(mid_meta_data->is_free == false){
+            mid_meta_data->is_free = true;
+        }
+        // pointer sent was already free
+        else {
+            return;
+        }
+        mergeFreeBlocks(mid_meta_data);
     }
-    // pointer sent was already free
+    // if block is from mmap list
     else {
-        return;
+        removeFromMmapList(mid_meta_data);
+        munmap(mid_meta_data, mid_meta_data->size + sizeof(MallocMetaData));
     }
-    mergeFreeBlocks(mid_meta_data);
 }
 
 void* srealloc(void* oldp, size_t size) {
@@ -298,8 +367,18 @@ void* srealloc(void* oldp, size_t size) {
         return smalloc(size);
     }
     MallocMetaData* old_metadata =(MallocMetaData*)((long)oldp-long(sizeof(MallocMetaData)));
-    if(size>= 128*KB) {
-        /// challenge 4
+    if(size > MAX_FOR_BINS) {
+        if(old_metadata->size < size) {
+            void* new_mapped_area = smalloc(size);
+            if (new_mapped_area != NULL){
+                std::memcpy(new_mapped_area, oldp, old_metadata->size+sizeof(MallocMetaData));
+                sfree(oldp);
+            }
+            return new_mapped_area;
+        }
+        else {
+            return oldp;
+        }
     }
     // option a
     if(old_metadata->size >= size) {
