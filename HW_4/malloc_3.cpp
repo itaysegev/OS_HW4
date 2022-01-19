@@ -60,7 +60,9 @@ static MallocMetaData* removeFromHistogram(MallocMetaData* to_remove) {
     }
 
     // in case is not head of bin
-    to_remove->next_in_bin->prev_in_bin = to_remove->prev_in_bin;
+    if (to_remove->next_in_bin != nullptr) {
+        to_remove->next_in_bin->prev_in_bin = to_remove->prev_in_bin;
+    }
     if(to_remove->prev_in_bin != nullptr) {
         to_remove->prev_in_bin->next_in_bin = to_remove->next_in_bin;
     }
@@ -270,28 +272,49 @@ void* scalloc(size_t num, size_t size) {
 }
 
 void merge_with_prev(MallocMetaData* metadata) {
-    removeFromHistogram(metadata);
+
     //merge prev with current
-    metadata->prev->size =metadata->size+ metadata->prev->size+ sizeof(MallocMetaData);
-    metadata->prev->next = metadata->next;
-    //update the next block
-    if(metadata->next!=nullptr) {
-        metadata->next->prev = metadata->prev;
-    }
-    //insert the new block
-    insertToHistogram(metadata->prev);
+    num_free_bytes -= metadata->prev->size;
     num_free_blocks--;
+    num_allocated_bytes += sizeof(MallocMetaData);
+    num_allocated_blocks--;
+
+    size_t meta_data_size = metadata->size;
+    MallocMetaData* metadata_next = metadata->next;
+    MallocMetaData* metadata_prev = metadata->prev;
+    std::memmove(
+            (void*)((long)metadata_prev+(long)sizeof(MallocMetaData)),
+            (void*)((long)metadata+(long)sizeof(MallocMetaData)), metadata_prev->size);
+
+    metadata_prev->size = meta_data_size + metadata_prev->size + sizeof(MallocMetaData);
+    metadata_prev->next = metadata_next;
+    metadata_prev->is_free = false;
+    removeFromHistogram(metadata_prev);
+
+    //update the next block
+    if(metadata_next!=nullptr) {
+        metadata_next->prev = metadata_prev;
+    }
+
 }
 void merge_with_next(MallocMetaData* metadata) {
-    //remove from histogram
-    removeFromHistogram(metadata);
+
+    num_free_bytes -= metadata->next->size;
+    num_free_blocks--;
+    num_allocated_bytes += sizeof(MallocMetaData);
+    num_allocated_blocks--;
+
     metadata->size = metadata->size+metadata->next->size+ sizeof(MallocMetaData);
-    if(metadata->next->next!= nullptr) {
+    if(metadata->next->next != nullptr) {
         metadata->next->next->prev = metadata;
     }
+
+    //remove from histogram
+    metadata->next->is_free = false;
+    removeFromHistogram(metadata->next);
+
     metadata->next = metadata->next->next;
     insertToHistogram(metadata->prev);
-    num_free_blocks--;
 }
 void merge(MallocMetaData* metadata) {
     MallocMetaData* next = metadata->next;
@@ -328,8 +351,10 @@ void mergeFreeBlocks(MallocMetaData* mid_meta_data) {
         insertToHistogram(low_meta_data);
         num_free_blocks -= 1;
         num_free_bytes += mid_meta_data->size + (sizeof(MallocMetaData)*2);
+        num_allocated_bytes += (2 * sizeof(MallocMetaData));
+        num_allocated_blocks -= 2;
     }
-        // merge lower and current
+    // merge lower and current
     else if (low_meta_data != nullptr) {
         removeFromHistogram(low_meta_data);
         removeFromHistogram(mid_meta_data);
@@ -337,8 +362,10 @@ void mergeFreeBlocks(MallocMetaData* mid_meta_data) {
         low_meta_data->next = mid_meta_data->next;
         insertToHistogram(low_meta_data);
         num_free_bytes += mid_meta_data->size + sizeof(MallocMetaData);
+        num_allocated_bytes += sizeof(MallocMetaData);
+        num_allocated_blocks--;
     }
-        // merge higher and current
+    // merge higher and current
     else if(high_meta_data != nullptr) {
         removeFromHistogram(mid_meta_data);
         removeFromHistogram(high_meta_data);
@@ -346,6 +373,8 @@ void mergeFreeBlocks(MallocMetaData* mid_meta_data) {
         mid_meta_data->next = high_meta_data->next;
         insertToHistogram(mid_meta_data);
         num_free_bytes += mid_meta_data->size + sizeof(MallocMetaData);
+        num_allocated_bytes += sizeof(MallocMetaData);
+        num_allocated_blocks--;
     }
         // no merging possible
     else {
@@ -389,7 +418,7 @@ void* srealloc(void* oldp, size_t size) {
         if(old_metadata->size < size) {
             void* new_mapped_area = smalloc(size);
             if (new_mapped_area != NULL){
-                std::memcpy(new_mapped_area, oldp, old_metadata->size+sizeof(MallocMetaData));
+                std::memcpy(new_mapped_area, oldp, old_metadata->size);
                 sfree(oldp);
             }
             return new_mapped_area;
@@ -400,7 +429,7 @@ void* srealloc(void* oldp, size_t size) {
     }
     // option a
     if(old_metadata->size >= size) {
-        if(old_metadata->size>= size+ sizeof(MallocMetaData)+128) {
+        if(old_metadata->size >= size + sizeof(MallocMetaData) + MIN_MEM_AFTER_SPLIT) {
             splitFreeBlock(old_metadata, size);
         }
         old_metadata->is_free = false;
@@ -411,12 +440,7 @@ void* srealloc(void* oldp, size_t size) {
     if(prev_is_free && size<=old_metadata->size +old_metadata->prev->size+sizeof (MallocMetaData)) {
         MallocMetaData* old_prev = old_metadata->prev;
         merge_with_prev(old_metadata);
-        old_metadata->prev->is_free= false;
-        //Copies count characters from the object pointed to by src to the object pointed to by dest
-        std::memmove(
-                (void*)((long)old_metadata->prev+(long)sizeof(MallocMetaData)),
-                oldp, old_metadata->size);
-        if(old_prev->size >=size+sizeof(MallocMetaData)+128) {
+        if(old_prev->size >=size+sizeof(MallocMetaData)+MIN_MEM_AFTER_SPLIT) {
             splitFreeBlock(old_prev, size);
         }
         return  (void*)((long)old_prev+(long)sizeof(MallocMetaData));
@@ -425,8 +449,7 @@ void* srealloc(void* oldp, size_t size) {
     //try merging next option c
     if(next_is_free&& size<=old_metadata->size+old_metadata->next->size+sizeof(MallocMetaData)) {
         merge_with_next(old_metadata);
-        old_metadata->is_free = false;
-        if(old_metadata->size >= size+sizeof(MallocMetaData)+128) {
+        if(old_metadata->size >= size+sizeof(MallocMetaData)+MIN_MEM_AFTER_SPLIT) {
             splitFreeBlock(old_metadata, size);
         }
         return  (void*)((long)old_metadata+(long)sizeof(MallocMetaData));
@@ -438,12 +461,8 @@ void* srealloc(void* oldp, size_t size) {
     {
         merge_with_next(old_metadata);
         merge_with_prev(old_metadata);
-        old_metadata->prev->is_free = false;
         MallocMetaData* prev_metadata = old_metadata->prev;
-        std::memmove((void*)((long)(old_metadata->prev)+
-                             (long)sizeof (MallocMetaData)), oldp, old_metadata->size);
-
-        if(old_metadata->prev->size >=size+sizeof(MallocMetaData)+128) {
+        if(old_metadata->prev->size >=size+sizeof(MallocMetaData)+MIN_MEM_AFTER_SPLIT) {
             splitFreeBlock(old_metadata->prev, size);
         }
         return (void*)((long)prev_metadata+
