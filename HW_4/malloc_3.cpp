@@ -144,6 +144,7 @@ static void insertToHeap(MallocMetaData* to_insert) {
     //if heap was empty
     if(heap_head == nullptr) {
         heap_head = to_insert;
+        insertToHistogram(to_insert);
         return;
     }
 
@@ -153,6 +154,7 @@ static void insertToHeap(MallocMetaData* to_insert) {
     } // find last in the list
     temp->next = to_insert;
     to_insert->prev = temp;
+    insertToHistogram(to_insert);
 }
 
 void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
