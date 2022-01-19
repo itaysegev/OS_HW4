@@ -105,7 +105,7 @@ void* srealloc(void* oldp, size_t size) {
     if (data->size < size) {
         void* allocated_block = smalloc(size);
         if (allocated_block != NULL) {
-            std::memcpy(allocated_block, oldp, data->size+sizeof(MallocMetaData));
+            std::memcpy(allocated_block, oldp, data->size);
             sfree(oldp);
         }
         return allocated_block;
