@@ -153,9 +153,10 @@ void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
     //update first block data
     block->size = first_block_size;
     block->is_free = false;
- 
-    //insertToHistogram(block); // first block allocated  is no longer free
-    insertToHistogram(splitted_block_metadata); 
+
+    // update histogram
+    insertToHistogram(splitted_block_metadata);
+
     //update list in heap
     splitted_block_metadata->next = block->next;
     splitted_block_metadata->prev = block;
@@ -165,10 +166,8 @@ void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
     block->next = splitted_block_metadata;
 
     //update Static Variables
-    num_free_bytes -= block->size; //first block allocated
-    ///number of  free blocks remain the same
-    num_allocated_blocks ++;
-    num_allocated_bytes += block->size
+    num_allocated_blocks++;
+    num_allocated_bytes += splitted_block_metadata->size;
 
 }
 
