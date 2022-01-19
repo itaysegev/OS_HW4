@@ -228,6 +228,20 @@ void* smalloc(size_t size) {
                 }
                 return (void *) ((char *) tmp + sizeof(MallocMetaData));
             }
+            // if top chunk is free, but not big enough at the moment
+            else if(tmp->is_free && (tmp->next == nullptr)) {
+                result = sbrk(size - tmp->size);
+                if (result == (void *) (-1)) {
+                    return NULL;
+                }
+                num_free_bytes -= tmp->size;
+                removeFromHistogram(tmp);
+
+                tmp->size = size;
+                tmp->is_free = false;
+                num_free_blocks--;
+                return (void *) ((char *) tmp + sizeof(MallocMetaData));
+            }
             tmp = tmp->next;
         }
     }
