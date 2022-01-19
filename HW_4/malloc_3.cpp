@@ -39,6 +39,7 @@ public:
 // Static Variables
 static Bin bins[128];
 static MallocMetaData* mmap_head = nullptr;
+static MallocMetaData* heap_head = nullptr;
 static size_t num_free_blocks = 0;
 static size_t num_free_bytes = 0;
 static size_t num_allocated_blocks = 0;
@@ -137,6 +138,21 @@ static void insertToMmapList(MallocMetaData* to_insert) {
     }
 }
 
+static void insertToHeap(MallocMetaData* to_insert) {
+    //if heap was empty
+    if(heap_head == nullptr) {
+        heap_head = to_insert;
+        return;
+    }
+
+    MallocMetaData* temp = heap_head; //iterator
+    while(temp->next!= nullptr) {
+        temp = temp->next;
+    } // find last in the list
+    temp->next = to_insert;
+    to_insert->prev = temp;
+}
+
 void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
     removeFromHistogram(block);
     num_free_bytes -= block->size; //first block allocated
@@ -230,11 +246,10 @@ void* smalloc(size_t size) {
     MallocMetaData *meta_data = (MallocMetaData *) result;
     updateNewAllocatedMetaData(meta_data, size);
 
-    // insert to histogram
+    // or insert to heap / mmap list
     if (size <= MAX_FOR_BINS) {
-        insertToHistogram(meta_data);
+        insertToHeap(meta_data);
     }
-    // or insert to mmap list
     else {
         insertToMmapList(meta_data);
     }
