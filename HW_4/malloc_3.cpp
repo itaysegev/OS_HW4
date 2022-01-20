@@ -203,6 +203,29 @@ static void updateNewAllocatedMetaData(MallocMetaData* meta_data, size_t size) {
     num_allocated_bytes += size;
 }
 
+static void* tryToEnlargeTopHeapChunk(MallocMetaData* tmp, size_t size) {
+    if(tmp == nullptr)
+        return NULL;
+
+    while (tmp->next != nullptr) tmp = tmp->next;
+    // if top chunk is free, but not big enough at the moment
+    if (tmp->is_free) {
+        void* result = sbrk(size - tmp->size);
+        if (result == (void *) (-1)) {
+            return NULL;
+        }
+        num_free_bytes -= tmp->size;
+        num_allocated_bytes += size - tmp->size;
+        removeFromHistogram(tmp);
+
+        tmp->size = size;
+        tmp->is_free = false;
+        num_free_blocks--;
+        return (void *) ((char *) tmp + sizeof(MallocMetaData));
+    }
+    return NULL;
+}
+
 void* smalloc(size_t size) {
     if((size == MIN) || (size > MAX)) {
         return NULL;
@@ -228,26 +251,16 @@ void* smalloc(size_t size) {
                 }
                 return (void *) ((char *) tmp + sizeof(MallocMetaData));
             }
-            // if top chunk is free, but not big enough at the moment
-            else if(tmp->is_free && (tmp->next == nullptr)) {
-                result = sbrk(size - tmp->size);
-                if (result == (void *) (-1)) {
-                    return NULL;
-                }
-                num_free_bytes -= tmp->size;
-                num_allocated_bytes += size - tmp->size;
-                removeFromHistogram(tmp);
-
-                tmp->size = size;
-                tmp->is_free = false;
-                num_free_blocks--;
-                return (void *) ((char *) tmp + sizeof(MallocMetaData));
-            }
             tmp = tmp->next;
         }
     }
-    void* result = nullptr;
+    // Wilderness - find top chunk, check if free
+    tmp = heap_head;
+    void* enlarge_attempt = tryToEnlargeTopHeapChunk(tmp, size);
+    if(enlarge_attempt != NULL) return enlarge_attempt;
+
     //No free blocks in desired bin
+    void* result = nullptr;
     if (size <= MAX_FOR_BINS) {
         result = sbrk(size + sizeof(MallocMetaData));
         if (result == (void *) (-1)) {
