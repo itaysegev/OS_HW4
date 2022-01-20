@@ -117,6 +117,8 @@ static MallocMetaData* insertToHistogram(MallocMetaData* to_insert) {
 
 static void removeFromMmapList(MallocMetaData* to_remove) {
     if(to_remove == nullptr) return;
+    num_allocated_blocks--;
+    num_allocated_bytes -= to_remove->size;
 
     if (mmap_head == to_remove) {
         mmap_head = to_remove->next;
@@ -538,7 +540,7 @@ void* srealloc(void* oldp, size_t size) {
         MallocMetaData* prev_metadata = old_metadata->prev;
         merge_with_next(old_metadata);
         merge_with_prev(old_metadata);
-        
+
         if(old_metadata->prev->size >=size+sizeof(MallocMetaData)+MIN_MEM_AFTER_SPLIT) {
             splitFreeBlock(old_metadata->prev, size);
         }
