@@ -329,7 +329,7 @@ void merge_with_prev(MallocMetaData* metadata) {
     MallocMetaData* metadata_prev = metadata->prev;
     std::memmove(
             (void*)((long)metadata_prev+(long)sizeof(MallocMetaData)),
-            (void*)((long)metadata+(long)sizeof(MallocMetaData)), metadata_prev->size);
+            (void*)((long)metadata+(long)sizeof(MallocMetaData)), metadata->size);
 
     metadata_prev->size = meta_data_size + metadata_prev->size + sizeof(MallocMetaData);
     metadata_prev->next = metadata_next;
