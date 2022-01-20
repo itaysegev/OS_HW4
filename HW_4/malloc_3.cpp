@@ -116,6 +116,8 @@ static MallocMetaData* insertToHistogram(MallocMetaData* to_insert) {
 }
 
 static void removeFromMmapList(MallocMetaData* to_remove) {
+    if(to_remove == nullptr) return;
+
     if (mmap_head == to_remove) {
         mmap_head = to_remove->next;
         if(to_remove->next != nullptr)
@@ -132,8 +134,12 @@ static void removeFromMmapList(MallocMetaData* to_remove) {
 }
 
 static void insertToMmapList(MallocMetaData* to_insert) {
+    if(to_insert == nullptr) return;
+
     if (mmap_head == nullptr) {
         mmap_head = to_insert;
+        to_insert->prev = nullptr;
+        to_insert->next = nullptr;
     }
     else {
         to_insert->next = mmap_head;
