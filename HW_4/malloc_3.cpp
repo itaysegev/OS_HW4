@@ -175,8 +175,6 @@ void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
     removeFromHistogram(block);
     if(block != nullptr && block->is_free) num_free_bytes -= block->size; //first block allocated
     else num_free_blocks++; // in case we came from realloc
-    num_free_bytes -= block->size; //first block allocated
-
     long new_addr = long(block) + long(sizeof(MallocMetaData)) + long(first_block_size);
     void* splitted_block = (void*)(new_addr);
 
