@@ -3,8 +3,7 @@
 #include <sys/mman.h>
 
 #define MAX 100000000
-// max bin hold less than (128 + 1) * 1024 = 132096
-#define MAX_FOR_BINS 132095
+#define MAX_FOR_BINS 131071
 #define MIN 0
 #define KB  1024
 #define MAX_BIN 127
@@ -50,7 +49,7 @@ static size_t num_allocated_bytes = 0;
 static MallocMetaData* removeFromHistogram(MallocMetaData* to_remove) {
     if (to_remove == nullptr || to_remove->is_free == false)
         return NULL;
-    
+
     int bin_index = to_remove->size / KB;
 
     if (to_remove == bins[bin_index].head) {
