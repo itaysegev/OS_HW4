@@ -535,9 +535,10 @@ void* srealloc(void* oldp, size_t size) {
        size<= old_metadata->size+old_metadata->prev->size+
               old_metadata->next->size+ 2*sizeof (MallocMetaData))
     {
+        MallocMetaData* prev_metadata = old_metadata->prev;
         merge_with_next(old_metadata);
         merge_with_prev(old_metadata);
-        MallocMetaData* prev_metadata = old_metadata->prev;
+        
         if(old_metadata->prev->size >=size+sizeof(MallocMetaData)+MIN_MEM_AFTER_SPLIT) {
             splitFreeBlock(old_metadata->prev, size);
         }
