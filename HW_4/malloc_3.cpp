@@ -48,6 +48,9 @@ static size_t num_allocated_bytes = 0;
 
 // Functions
 static MallocMetaData* removeFromHistogram(MallocMetaData* to_remove) {
+    if (to_remove == nullptr || to_remove->is_free == false)
+        return NULL;
+    
     int bin_index = to_remove->size / KB;
 
     if (to_remove == bins[bin_index].head) {
@@ -163,6 +166,8 @@ static void insertToHeap(MallocMetaData* to_insert) {
 
 void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
     removeFromHistogram(block);
+    if(block != nullptr && block->is_free) num_free_bytes -= block->size; //first block allocated
+    else num_free_blocks++; // in case we came from realloc
     num_free_bytes -= block->size; //first block allocated
 
     long new_addr = long(block) + long(sizeof(MallocMetaData)) + long(first_block_size);
@@ -191,7 +196,8 @@ void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
 
     //update Static Variables
     num_allocated_blocks++;
-    num_allocated_bytes += splitted_block_metadata->size;
+    num_allocated_bytes -= sizeof(MallocMetaData);
+    num_free_bytes += splitted_block_metadata->size;
 
 }
 
@@ -537,6 +543,11 @@ void* srealloc(void* oldp, size_t size) {
     if(old_metadata->next==nullptr) { // last in the heap
         if(sbrk(size-old_metadata->size)==(void*)-1 ) {
             return NULL;
+        }
+        num_allocated_bytes += (size - old_metadata->size);
+        if (old_metadata->is_free) {
+            num_free_blocks--;
+            num_free_bytes -= old_metadata->size;
         }
         old_metadata->is_free = false;
         old_metadata->size = size;
