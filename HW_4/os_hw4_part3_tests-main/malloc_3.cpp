@@ -1,4 +1,5 @@
 #include <cstring>
+#include <stdio.h>
 #include <unistd.h>
 #include <sys/mman.h>
 
@@ -142,7 +143,19 @@ static void insertToMmapList(MallocMetaData* to_insert) {
 
 static void insertToHeap(MallocMetaData* to_insert) {
     //if heap was empty
+//    printf("inside insertToHeap: heap now looks like: \n");
+//    MallocMetaData* current = heap_head;
+//    while (current) {
+//        if (current->is_free) {
+//            printf("|F:%d|", current->size);
+//        } else {
+//            printf("|U:%d|\n", current->size);
+//        }
+//        current = current->next;
+//    }
+
     if(heap_head == nullptr) {
+        printf("heap head is nullptr\n");
         heap_head = to_insert;
         insertToHistogram(to_insert);
         return;
@@ -155,6 +168,18 @@ static void insertToHeap(MallocMetaData* to_insert) {
     temp->next = to_insert;
     to_insert->prev = temp;
     insertToHistogram(to_insert);
+
+
+
+//    current = heap_head;
+//    while (current) {
+//        if (current->is_free) {
+//            printf("\n|F:%d|", current->size);
+//        } else {
+//            printf("|U:%d|\n", current->size);
+//        }
+//        current = current->next;
+//    }
 }
 
 void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
@@ -207,12 +232,13 @@ void* smalloc(size_t size) {
     if((size == MIN) || (size > MAX)) {
         return NULL;
     }
-
+    void* result = nullptr;
     //Search for free block
     for (int bin_index = (size / KB) ; bin_index <= MAX_BIN ; bin_index++) {
         MallocMetaData* tmp = bins[bin_index].head; // iterator
         while (tmp != nullptr) {
             // allocate the first free block that fits
+            //printf("inside smalloc, tmp->size: %d\n", tmp->size);
             if (tmp->is_free && (tmp->size >= size)) {
                 /* challenge 1 should be used in this conditional (in case tmp->size is strictly greater than size)
                  * after splitting the block we should update the histogram
@@ -245,9 +271,10 @@ void* smalloc(size_t size) {
             tmp = tmp->next;
         }
     }
-    void* result = nullptr;
+    result = nullptr;
     //No free blocks in desired bin
     if (size <= MAX_FOR_BINS) {
+        //printf("inside smalloc, allocating: %d\n", size);
         result = sbrk(size + sizeof(MallocMetaData));
         if (result == (void *) (-1)) {
             return NULL;
@@ -263,9 +290,9 @@ void* smalloc(size_t size) {
 
     MallocMetaData *meta_data = (MallocMetaData *) result;
     updateNewAllocatedMetaData(meta_data, size);
-
     // or insert to heap / mmap list
     if (size <= MAX_FOR_BINS) {
+        //printf("inside smalloc, inserting to heap\n");
         insertToHeap(meta_data);
     }
     else {
@@ -504,91 +531,91 @@ void* srealloc(void* oldp, size_t size) {
 }
 
 // Stats Functions
-size_t _num_free_blocks() {
-    return num_free_blocks;
-}
-
-size_t _num_free_bytes() {
-    return num_free_bytes;
-}
-
-size_t _num_allocated_blocks() {
-    return num_allocated_blocks;
-}
-
-size_t _num_allocated_bytes() {
-    return num_allocated_bytes;
-}
-
-size_t _num_meta_data_bytes() {
-    return sizeof(MallocMetaData) * num_allocated_blocks;
-}
-
-size_t _size_meta_data() {
-    return sizeof(MallocMetaData);
-}
-
-
-
-// size_t _num_free_blocks() {
-//     size_t counter = 0;
-//     MallocMetaData* tmp = heap_head; //head of the heap list
-//     while(tmp != nullptr) {
-//         if(tmp->is_free) {
-//             counter++;
-//         }
-//         tmp = tmp->next;
-//     }
-//     return counter;
-// }
+//size_t _num_free_blocks() {
+//    return num_free_blocks;
+//}
 //
-// size_t _num_free_bytes() {
-//     size_t sum = 0;
-//     MallocMetaData* tmp = heap_head;
-//     while(tmp != nullptr) {
-//         if(tmp->is_free) {
-//             sum+=tmp->size;
-//         }
-//         tmp = tmp->next;
-//     }
-//     return sum;
-// }
+//size_t _num_free_bytes() {
+//    return num_free_bytes;
+//}
 //
-// size_t _num_allocated_blocks() {
-//     size_t counter = 0;
-//     MallocMetaData* tmp = heap_head;
-//     while(tmp != nullptr) {
-//         counter++;
-//         tmp = tmp->next;
-//     }
-//     MallocMetaData* mmap_tmp = mmap_head;
-//     while(mmap_tmp!=nullptr)
-//     {
-//         counter++;
-//         mmap_tmp = mmap_tmp->next;
-//     }
-//     return counter;
-// }
+//size_t _num_allocated_blocks() {
+//    return num_allocated_blocks;
+//}
 //
-// size_t _num_allocated_bytes() {
-//     size_t sum = 0;
-//     MallocMetaData* tmp = heap_head;
-//     while(tmp != nullptr) {
-//         sum+=tmp->size;
-//         tmp = tmp->next;
-//     }
-//     MallocMetaData* mmap_tmp = mmap_head;
-//     while(mmap_tmp != nullptr) {
-//         sum+=mmap_tmp->size;
-//         mmap_tmp = mmap_tmp->next;
-//     }
-//     return sum;
-// }
+//size_t _num_allocated_bytes() {
+//    return num_allocated_bytes;
+//}
 //
-// size_t _size_meta_data() {
-//     return sizeof(MallocMetaData);
-// }
+//size_t _num_meta_data_bytes() {
+//    return sizeof(MallocMetaData) * num_allocated_blocks;
+//}
 //
-// size_t _num_meta_data_bytes() {
-//     return _size_meta_data() * _num_allocated_blocks();
-// }
+//size_t _size_meta_data() {
+//    return sizeof(MallocMetaData);
+//}
+
+
+
+ size_t _num_free_blocks() {
+     size_t counter = 0;
+     MallocMetaData* tmp = heap_head; //head of the heap list
+     while(tmp != nullptr) {
+         if(tmp->is_free) {
+             counter++;
+         }
+         tmp = tmp->next;
+     }
+     return counter;
+ }
+
+ size_t _num_free_bytes() {
+     size_t sum = 0;
+     MallocMetaData* tmp = heap_head;
+     while(tmp != nullptr) {
+         if(tmp->is_free) {
+             sum+=tmp->size;
+         }
+         tmp = tmp->next;
+     }
+     return sum;
+ }
+
+ size_t _num_allocated_blocks() {
+     size_t counter = 0;
+     MallocMetaData* tmp = heap_head;
+     while(tmp != nullptr) {
+         counter++;
+         tmp = tmp->next;
+     }
+     MallocMetaData* mmap_tmp = mmap_head;
+     while(mmap_tmp!=nullptr)
+     {
+         counter++;
+         mmap_tmp = mmap_tmp->next;
+     }
+     return counter;
+ }
+
+ size_t _num_allocated_bytes() {
+     size_t sum = 0;
+     MallocMetaData* tmp = heap_head;
+     while(tmp != nullptr) {
+         sum+=tmp->size;
+         tmp = tmp->next;
+     }
+     MallocMetaData* mmap_tmp = mmap_head;
+     while(mmap_tmp != nullptr) {
+         sum+=mmap_tmp->size;
+         mmap_tmp = mmap_tmp->next;
+     }
+     return sum;
+ }
+
+ size_t _size_meta_data() {
+     return sizeof(MallocMetaData);
+ }
+
+ size_t _num_meta_data_bytes() {
+     return _size_meta_data() * _num_allocated_blocks();
+ }
