@@ -162,7 +162,7 @@ static void insertToHeap(MallocMetaData* to_insert) {
 }
 
 void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
-    removeFromHistogram(block);
+    //removeFromHistogram(block);
     num_free_bytes -= block->size; //first block allocated
 
     long new_addr = long(block) + long(sizeof(MallocMetaData)) + long(first_block_size);
