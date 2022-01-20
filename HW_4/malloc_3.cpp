@@ -259,7 +259,7 @@ void* smalloc(size_t size) {
         }
     }
     // Wilderness - find top chunk, check if free
-    tmp = heap_head;
+    MallocMetaData* tmp = heap_head;
     void* enlarge_attempt = tryToEnlargeTopHeapChunk(tmp, size);
     if(enlarge_attempt != NULL) return enlarge_attempt;
 
