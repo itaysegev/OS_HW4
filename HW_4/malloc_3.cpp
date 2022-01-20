@@ -247,10 +247,10 @@ void* smalloc(size_t size) {
     if((size == MIN) || (size > MAX)) {
         return NULL;
     }
-
+    MallocMetaData* tmp = nullptr;
     //Search for free block
     for (int bin_index = (size / KB) ; bin_index <= MAX_BIN ; bin_index++) {
-        MallocMetaData* tmp = bins[bin_index].head; // iterator
+        tmp = bins[bin_index].head; // iterator
         while (tmp != nullptr) {
             // allocate the first free block that fits
             if (tmp->is_free && (tmp->size >= size)) {
