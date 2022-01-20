@@ -235,6 +235,7 @@ void* smalloc(size_t size) {
                     return NULL;
                 }
                 num_free_bytes -= tmp->size;
+                num_allocated_bytes += size - tmp->size;
                 removeFromHistogram(tmp);
 
                 tmp->size = size;
