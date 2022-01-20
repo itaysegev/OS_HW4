@@ -389,6 +389,9 @@ void mergeFreeBlocks(MallocMetaData* mid_meta_data) {
         low_meta_data->size = low_meta_data->size + mid_meta_data->size + high_meta_data->size + (sizeof(MallocMetaData)*2);
         low_meta_data->next = high_meta_data->next;
 
+        if (high_meta_data->next != nullptr)
+            high_meta_data->next->prev = low_meta_data;
+
         // making old metadata un-reachable
         std::memset(mid_meta_data, 0, sizeof(MallocMetaData) + mid_meta_data->size);
         std::memset(high_meta_data, 0, sizeof(MallocMetaData) + high_meta_data->size);
@@ -408,6 +411,9 @@ void mergeFreeBlocks(MallocMetaData* mid_meta_data) {
         low_meta_data->size = low_meta_data->size + mid_meta_data->size + sizeof(MallocMetaData);
         low_meta_data->next = mid_meta_data->next;
 
+        if (mid_meta_data->next != nullptr)
+            mid_meta_data->next->prev = low_meta_data;
+
         // making old metadata un-reachable
         std::memset(mid_meta_data, 0, sizeof(MallocMetaData) + mid_meta_data->size);
 
@@ -425,6 +431,9 @@ void mergeFreeBlocks(MallocMetaData* mid_meta_data) {
         removeFromHistogram(high_meta_data);
         mid_meta_data->size = mid_meta_data->size + high_meta_data->size + sizeof(MallocMetaData);
         mid_meta_data->next = high_meta_data->next;
+
+        if (high_meta_data->next != nullptr)
+            high_meta_data->next->prev = mid_meta_data;
 
         // making old metadata un-reachable
         std::memset(high_meta_data, 0, sizeof(MallocMetaData) + high_meta_data->size);
