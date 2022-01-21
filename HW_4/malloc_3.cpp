@@ -269,14 +269,15 @@ void* smalloc(size_t size) {
             tmp = tmp->next;
         }
     }
-    // Wilderness - find top chunk, check if free
-    tmp = heap_head;
-    void* enlarge_attempt = tryToEnlargeTopHeapChunk(tmp, size);
-    if(enlarge_attempt != NULL) return enlarge_attempt;
 
     //No free blocks in desired bin
     void* result = nullptr;
     if (size <= MAX_FOR_BINS) {
+        // Wilderness - find top chunk, check if free
+        tmp = heap_head;
+        void* enlarge_attempt = tryToEnlargeTopHeapChunk(tmp, size);
+        if(enlarge_attempt != NULL) return enlarge_attempt;
+
         result = sbrk(size + sizeof(MallocMetaData));
         if (result == (void *) (-1)) {
             return NULL;
