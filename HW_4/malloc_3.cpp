@@ -500,6 +500,9 @@ void* srealloc(void* oldp, size_t size) {
             return new_mapped_area;
         }
         else {
+            munmap((char*)old_metadata + size + sizeof(MallocMetaData), old_metadata->size - size);
+            num_allocated_bytes -= old_metadata->size - size;
+            old_metadata->size = size;
             return oldp;
         }
     }
