@@ -117,6 +117,8 @@ static MallocMetaData* insertToHistogram(MallocMetaData* to_insert) {
 
 static void removeFromMmapList(MallocMetaData* to_remove) {
     if(to_remove == nullptr) return;
+    num_allocated_blocks--;
+    num_allocated_bytes -= to_remove->size;
 
     if (mmap_head == to_remove) {
         mmap_head = to_remove->next;
@@ -173,8 +175,6 @@ void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
     removeFromHistogram(block);
     if(block != nullptr && block->is_free) num_free_bytes -= block->size; //first block allocated
     else num_free_blocks++; // in case we came from realloc
-    num_free_bytes -= block->size; //first block allocated
-
     long new_addr = long(block) + long(sizeof(MallocMetaData)) + long(first_block_size);
     void* splitted_block = (void*)(new_addr);
 
@@ -245,10 +245,10 @@ void* smalloc(size_t size) {
     if((size == MIN) || (size > MAX)) {
         return NULL;
     }
-
+    MallocMetaData* tmp = nullptr;
     //Search for free block
     for (int bin_index = (size / KB) ; bin_index <= MAX_BIN ; bin_index++) {
-        MallocMetaData* tmp = bins[bin_index].head; // iterator
+        tmp = bins[bin_index].head; // iterator
         while (tmp != nullptr) {
             // allocate the first free block that fits
             if (tmp->is_free && (tmp->size >= size)) {
@@ -269,14 +269,15 @@ void* smalloc(size_t size) {
             tmp = tmp->next;
         }
     }
-    // Wilderness - find top chunk, check if free
-    MallocMetaData* tmp = heap_head;
-    void* enlarge_attempt = tryToEnlargeTopHeapChunk(tmp, size);
-    if(enlarge_attempt != NULL) return enlarge_attempt;
 
     //No free blocks in desired bin
     void* result = nullptr;
     if (size <= MAX_FOR_BINS) {
+        // Wilderness - find top chunk, check if free
+        tmp = heap_head;
+        void* enlarge_attempt = tryToEnlargeTopHeapChunk(tmp, size);
+        if(enlarge_attempt != NULL) return enlarge_attempt;
+
         result = sbrk(size + sizeof(MallocMetaData));
         if (result == (void *) (-1)) {
             return NULL;
@@ -329,7 +330,7 @@ void merge_with_prev(MallocMetaData* metadata) {
     MallocMetaData* metadata_prev = metadata->prev;
     std::memmove(
             (void*)((long)metadata_prev+(long)sizeof(MallocMetaData)),
-            (void*)((long)metadata+(long)sizeof(MallocMetaData)), metadata_prev->size);
+            (void*)((long)metadata+(long)sizeof(MallocMetaData)), metadata->size);
 
     metadata_prev->size = meta_data_size + metadata_prev->size + sizeof(MallocMetaData);
     metadata_prev->next = metadata_next;
@@ -500,6 +501,9 @@ void* srealloc(void* oldp, size_t size) {
             return new_mapped_area;
         }
         else {
+            munmap((char*)old_metadata + size + sizeof(MallocMetaData), old_metadata->size - size);
+            num_allocated_bytes -= old_metadata->size - size;
+            old_metadata->size = size;
             return oldp;
         }
     }
@@ -535,9 +539,10 @@ void* srealloc(void* oldp, size_t size) {
        size<= old_metadata->size+old_metadata->prev->size+
               old_metadata->next->size+ 2*sizeof (MallocMetaData))
     {
+        MallocMetaData* prev_metadata = old_metadata->prev;
         merge_with_next(old_metadata);
         merge_with_prev(old_metadata);
-        MallocMetaData* prev_metadata = old_metadata->prev;
+
         if(old_metadata->prev->size >=size+sizeof(MallocMetaData)+MIN_MEM_AFTER_SPLIT) {
             splitFreeBlock(old_metadata->prev, size);
         }
@@ -569,91 +574,91 @@ void* srealloc(void* oldp, size_t size) {
 }
 
 // Stats Functions
-// size_t _num_free_blocks() {
-//     return num_free_blocks;
-// }
-
-// size_t _num_free_bytes() {
-//     return num_free_bytes;
-// }
-
-// size_t _num_allocated_blocks() {
-//     return num_allocated_blocks;
-// }
-
-// size_t _num_allocated_bytes() {
-//     return num_allocated_bytes;
-// }
-
-// size_t _num_meta_data_bytes() {
-//     return sizeof(MallocMetaData) * num_allocated_blocks;
-// }
-
-// size_t _size_meta_data() {
-//     return sizeof(MallocMetaData);
-// }
-
-
-
 size_t _num_free_blocks() {
-    size_t counter = 0;
-    MallocMetaData* tmp = heap_head; //head of the heap list
-    while(tmp != nullptr) {
-        if(tmp->is_free) {
-            counter++;
-        }
-        tmp = tmp->next;
-    }
-    return counter;
+    return num_free_blocks;
 }
 
 size_t _num_free_bytes() {
-    size_t sum = 0;
-    MallocMetaData* tmp = heap_head;
-    while(tmp != nullptr) {
-        if(tmp->is_free) {
-            sum+=tmp->size;
-        }
-        tmp = tmp->next;
-    }
-    return sum;
+    return num_free_bytes;
 }
 
 size_t _num_allocated_blocks() {
-    size_t counter = 0;
-    MallocMetaData* tmp = heap_head;
-    while(tmp != nullptr) {
-        counter++;
-        tmp = tmp->next;
-    }
-    MallocMetaData* mmap_tmp = mmap_head;
-    while(mmap_tmp!=nullptr)
-    {
-        counter++;
-        mmap_tmp = mmap_tmp->next;
-    }
-    return counter;
+    return num_allocated_blocks;
 }
 
 size_t _num_allocated_bytes() {
-    size_t sum = 0;
-    MallocMetaData* tmp = heap_head;
-    while(tmp != nullptr) {
-        sum+=tmp->size;
-        tmp = tmp->next;
-    }
-    MallocMetaData* mmap_tmp = mmap_head;
-    while(mmap_tmp != nullptr) {
-        sum+=mmap_tmp->size;
-        mmap_tmp = mmap_tmp->next;
-    }
-    return sum;
+    return num_allocated_bytes;
+}
+
+size_t _num_meta_data_bytes() {
+    return sizeof(MallocMetaData) * num_allocated_blocks;
 }
 
 size_t _size_meta_data() {
     return sizeof(MallocMetaData);
 }
 
-size_t _num_meta_data_bytes() {
-    return _size_meta_data() * _num_allocated_blocks();
-}
+
+
+// size_t _num_free_blocks() {
+//     size_t counter = 0;
+//     MallocMetaData* tmp = heap_head; //head of the heap list
+//     while(tmp != nullptr) {
+//         if(tmp->is_free) {
+//             counter++;
+//         }
+//         tmp = tmp->next;
+//     }
+//     return counter;
+// }
+//
+// size_t _num_free_bytes() {
+//     size_t sum = 0;
+//     MallocMetaData* tmp = heap_head;
+//     while(tmp != nullptr) {
+//         if(tmp->is_free) {
+//             sum+=tmp->size;
+//         }
+//         tmp = tmp->next;
+//     }
+//     return sum;
+// }
+//
+// size_t _num_allocated_blocks() {
+//     size_t counter = 0;
+//     MallocMetaData* tmp = heap_head;
+//     while(tmp != nullptr) {
+//         counter++;
+//         tmp = tmp->next;
+//     }
+//     MallocMetaData* mmap_tmp = mmap_head;
+//     while(mmap_tmp!=nullptr)
+//     {
+//         counter++;
+//         mmap_tmp = mmap_tmp->next;
+//     }
+//     return counter;
+// }
+//
+// size_t _num_allocated_bytes() {
+//     size_t sum = 0;
+//     MallocMetaData* tmp = heap_head;
+//     while(tmp != nullptr) {
+//         sum+=tmp->size;
+//         tmp = tmp->next;
+//     }
+//     MallocMetaData* mmap_tmp = mmap_head;
+//     while(mmap_tmp != nullptr) {
+//         sum+=mmap_tmp->size;
+//         mmap_tmp = mmap_tmp->next;
+//     }
+//     return sum;
+// }
+//
+// size_t _size_meta_data() {
+//     return sizeof(MallocMetaData);
+// }
+//
+// size_t _num_meta_data_bytes() {
+//     return _size_meta_data() * _num_allocated_blocks();
+// }
