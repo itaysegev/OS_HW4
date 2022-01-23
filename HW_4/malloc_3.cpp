@@ -525,38 +525,46 @@ void* srealloc(void* oldp, size_t size) {
     }
     //try merging prev option b
     bool prev_is_free =old_metadata->prev!= nullptr && old_metadata->prev->is_free;
-    if(prev_is_free && size<=old_metadata->size +old_metadata->prev->size+sizeof (MallocMetaData)) {
+    if(prev_is_free) {
         MallocMetaData* old_prev = old_metadata->prev;
         merge_with_prev(old_metadata);
         if(old_prev->size >=size+sizeof(MallocMetaData)+MIN_MEM_AFTER_SPLIT) {
             splitFreeBlock(old_prev, size);
+            return  (void*)((long)old_prev+(long)sizeof(MallocMetaData));
         }
-        return  (void*)((long)old_prev+(long)sizeof(MallocMetaData));
+        old_metadata = old_prev;
+        if(old_metadata->size >= size) {
+            return  (void*)((long)old_metadata+(long)sizeof(MallocMetaData));
+        }
+
     }
     bool next_is_free = old_metadata->next!=nullptr && old_metadata->next->is_free;
     //try merging next option c
-    if(next_is_free&& size<=old_metadata->size+old_metadata->next->size+sizeof(MallocMetaData)) {
+    if(next_is_free/*&& size<=old_metadata->size+old_metadata->next->size+sizeof(MallocMetaData)*/) {
         merge_with_next(old_metadata);
         if(old_metadata->size >= size+sizeof(MallocMetaData)+MIN_MEM_AFTER_SPLIT) {
             splitFreeBlock(old_metadata, size);
+            return  (void*)((long)old_metadata+(long)sizeof(MallocMetaData));
         }
-        return  (void*)((long)old_metadata+(long)sizeof(MallocMetaData));
+        if(old_metadata->size >= size) {
+            return  (void*)((long)old_metadata+(long)sizeof(MallocMetaData));
+        }
     }
     //try merging both option d
-    if(prev_is_free&& next_is_free &&
-       size<= old_metadata->size+old_metadata->prev->size+
-              old_metadata->next->size+ 2*sizeof (MallocMetaData))
-    {
-        MallocMetaData* prev_metadata = old_metadata->prev;
-        merge_with_next(old_metadata);
-        merge_with_prev(old_metadata);
-
-        if(old_metadata->prev->size >=size+sizeof(MallocMetaData)+MIN_MEM_AFTER_SPLIT) {
-            splitFreeBlock(old_metadata->prev, size);
-        }
-        return (void*)((long)prev_metadata+
-                       (long)sizeof(MallocMetaData));
-    }
+//    if(prev_is_free&& next_is_free &&
+//       size<= old_metadata->size+old_metadata->prev->size+
+//              old_metadata->next->size+ 2*sizeof (MallocMetaData))
+//    {
+//        MallocMetaData* prev_metadata = old_metadata->prev;
+//        merge_with_next(old_metadata);
+//        merge_with_prev(old_metadata);
+//
+//        if(old_metadata->prev->size >=size+sizeof(MallocMetaData)+MIN_MEM_AFTER_SPLIT) {
+//            splitFreeBlock(old_metadata->prev, size);
+//        }
+//        return (void*)((long)prev_metadata+
+//                       (long)sizeof(MallocMetaData));
+//    }
     //wilderness challenge 3
     if(old_metadata->next==nullptr) { // last in the heap
         if(sbrk(size-old_metadata->size)==(void*)-1 ) {
