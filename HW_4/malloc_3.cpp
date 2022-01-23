@@ -97,11 +97,17 @@ static MallocMetaData* insertToHistogram(MallocMetaData* to_insert) {
         // finding a place between lesser and greater values of size
         while (temp != nullptr) {
             pre_temp = temp;
-            if (temp->size <= to_insert->size && temp->next_in_bin != NULL && temp->next_in_bin->size >= to_insert->size) {
+            if (temp->size <= to_insert->size && temp->next_in_bin != nullptr && temp->next_in_bin->size >= to_insert->size) {
                 to_insert->next_in_bin = temp->next_in_bin;
                 temp->next_in_bin = to_insert;
                 to_insert->prev_in_bin = temp;
                 to_insert->next_in_bin->prev_in_bin = to_insert;
+                return to_insert;
+            }
+            else if (temp->size <= to_insert->size && temp->next_in_bin != nullptr) {
+                to_insert->next_in_bin = nullptr;
+                temp->next_in_bin = to_insert;
+                to_insert->prev_in_bin = temp;
                 return to_insert;
             }
             temp = temp->next_in_bin;
