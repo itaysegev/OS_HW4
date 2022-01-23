@@ -551,6 +551,11 @@ void* srealloc(void* oldp, size_t size) {
     }
     //wilderness challenge 3
     if(old_metadata->next==nullptr) { // last in the heap
+    	MallocMetaData* old_prev = old_metadata->prev;
+		if(old_prev->is_free) {
+			merge_with_prev(old_metadata);
+			old_metadata = old_prev;
+		}
         if(sbrk(size-old_metadata->size)==(void*)-1 ) {
             return NULL;
         }
