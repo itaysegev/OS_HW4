@@ -9,7 +9,7 @@
 #define MAX_BIN 127
 #define MIN_MEM_AFTER_SPLIT 128
 
-
+//
 // Classes
 class MallocMetaData {
 public:
