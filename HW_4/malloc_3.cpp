@@ -256,7 +256,8 @@ void* smalloc(size_t size) {
                  * after splitting the block we should update the histogram
                  *
                  * */
-                if (tmp->size - size - sizeof(MallocMetaData) >= MIN_MEM_AFTER_SPLIT) {
+                int threshold = tmp->size - size - sizeof(MallocMetaData);
+                if (threshold >= MIN_MEM_AFTER_SPLIT) {
                     splitFreeBlock(tmp, size);
                 }
                 else {
