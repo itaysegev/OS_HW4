@@ -476,6 +476,7 @@ void sfree(void* p) {
     if (mid_meta_data->size <= MAX_FOR_BINS) {
         if(mid_meta_data->is_free == false){
             mid_meta_data->is_free = true;
+            insertToHistogram(mid_meta_data);
         }
         // pointer sent was already free
         else {
