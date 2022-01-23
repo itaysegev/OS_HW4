@@ -1,5 +1,6 @@
 #include <cstring>
 #include <unistd.h>
+#include <stdio.h>
 #include <sys/mman.h>
 
 #define MAX 100000000
@@ -34,6 +35,8 @@ public:
     Bin() : head(nullptr) {}
 };
 
+// Declarations
+void mergeFreeBlocks(MallocMetaData* mid_meta_data);
 
 // Static Variables
 static Bin bins[128];
@@ -209,6 +212,8 @@ void splitFreeBlock(MallocMetaData* block, size_t first_block_size) {
     num_allocated_blocks++;
     num_allocated_bytes -= sizeof(MallocMetaData);
     num_free_bytes += splitted_block_metadata->size;
+
+    mergeFreeBlocks(splitted_block_metadata);
 
 }
 
